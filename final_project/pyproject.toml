@@ -1,0 +1,82 @@
+[project]
+name = "mipt-fastapi-template"
+version = "0.1.0"
+description = "FastAPI template for MIPT educational projects"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "fastapi[all]==0.103.1",
+    "sqlalchemy==2.0.20",
+    "httpx==0.28.1",
+    "pytz==2023.3",
+    "cachetools==5.3.1",
+    "pyinstrument",
+    "alembic",
+    "rodi",
+    "dishka",
+]
+
+[dependency-groups]
+dev = [
+    "ruff==0.4.1",
+    "mypy>=1.8.0",
+    "pytest==7.2.1",
+    "pytest-mock==3.10.0",
+    "pytest-asyncio==0.20.3",
+    "coverage==7.2.1",
+    "sqlalchemy-stubs==0.4",
+    "pytest-reportlog",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403", "F405"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+docstring-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Path"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "Q"]
+ignore = ["Q003", "E712", "E711"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+ignore_missing_imports = false
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_configs = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_missing_imports = true
