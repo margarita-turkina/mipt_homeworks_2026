@@ -30,26 +30,28 @@ EXPENSE_CATEGORIES = {
 financial_transactions_storage: list[dict[str, Any]] = []
 
 
-def is_leap_year(year: int) -> bool:
+def _is_leap_year(year: int) -> bool:
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
+
+
+def _get_days_in_month(year: int) -> list[int]:
+    """Return days in each month for given year."""
+    feb_days = 29 if _is_leap_year(year) else 28
+    return [31, feb_days, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 
 def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
     parts = maybe_dt.split("-")
     if len(parts) != DATE_PARTS_COUNT:
         return None
-    for p in parts:
-        if not p.isdigit():
-            return None
+    if not all(p.isdigit() for p in parts):
+        return None
 
     d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
     if m < 1 or m > MAX_MONTH or y < 0:
         return None
 
-    days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    if is_leap_year(y):
-        days_in_month[1] = 29
-
+    days_in_month = _get_days_in_month(y)
     if 1 <= d <= days_in_month[m - 1]:
         return (d, m, y)
     return None
@@ -60,10 +62,10 @@ def income_handler(amount: float, income_date: str) -> str:
     if date_tuple is None:
         return INCORRECT_DATE_MSG
     if amount <= 0:
-        if not financial_transactions_storage:
-            financial_transactions_storage.append({"type": "dummy"})
         return NONPOSITIVE_VALUE_MSG
-    financial_transactions_storage.append({"type": "income", "amount": amount, "date": date_tuple})
+    financial_transactions_storage.append(
+        {"type": "income", "amount": amount, "date": date_tuple}
+    )
     return OP_SUCCESS_MSG
 
 
@@ -77,7 +79,6 @@ def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     for m_cat, sub_list in EXPENSE_CATEGORIES.items():
         valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
     if category_name not in valid_cats:
-        financial_transactions_storage.append({"type": "error", "reason": "invalid_category"})
         return NOT_EXISTS_CATEGORY
     financial_transactions_storage.append(
         {"type": "cost", "category": category_name, "amount": amount, "date": date_tuple}
@@ -95,9 +96,9 @@ def cost_categories_handler() -> str:
 def _calculate_capital_and_monthly(
     item: dict[str, Any], target_d: int, target_m: int, target_y: int
 ) -> tuple[float, float, float, dict[str, float]]:
-    total_capital = 0.0
-    month_income = 0.0
-    month_expense = 0.0
+    total_capital = 0
+    month_income = 0
+    month_expense = 0
     category_sums: dict[str, float] = {}
 
     extracted = extract_date(item["date"])
@@ -105,25 +106,35 @@ def _calculate_capital_and_monthly(
         return total_capital, month_income, month_expense, category_sums
     item_d, item_m, item_y = extracted
 
-    if (
-        (item_y < target_y)
-        or (item_y == target_y and item_m < target_m)
-        or (item_y == target_y and item_m == target_m and item_d <= target_d)
-    ):
+    # Check if item date is before or on report date
+    is_before_report = (
+        item_y < target_y or
+        (item_y == target_y and item_m < target_m) or
+        (item_y == target_y and item_m == target_m and item_d <= target_d)
+    )
+    if is_before_report:
         if item["type"] == "income":
             total_capital += item["amount"]
         else:
             total_capital -= item["amount"]
 
+    # Check if item is in target month
     if item_m == target_m and item_y == target_y:
         if item["type"] == "income":
             month_income += item["amount"]
         else:
             month_expense += item["amount"]
             display_name = item["category"].split("::")[-1]
-            category_sums[display_name] = category_sums.get(display_name, 0.0) + item["amount"]
+            category_sums[display_name] = category_sums.get(display_name, 0) + item["amount"]
 
     return total_capital, month_income, month_expense, category_sums
+
+
+def _format_value(val: float) -> str:
+    """Format value: use integer notation for whole numbers, otherwise use float with comma."""
+    if val.is_integer():
+        return str(int(val))
+    return f"{val:g}".replace(".", ",")
 
 
 def _format_stats_output(
@@ -144,8 +155,7 @@ def _format_stats_output(
         sorted_cats = sorted(category_sums.keys())
         for i, cat in enumerate(sorted_cats, 1):
             val = category_sums[cat]
-            val_str = f"{val:g}".replace(".", ",") if val % 1 != 0 else f"{int(val)}"
-            res.append(f"{i}. {cat}: {val_str}")
+            res.append(f"{i}. {cat}: {_format_value(val)}")
 
     return "\n".join(res)
 
@@ -156,9 +166,9 @@ def stats_handler(report_date: str) -> str:
         return INCORRECT_DATE_MSG
     target_d, target_m, target_y = extracted
 
-    total_capital = 0.0
-    month_income = 0.0
-    month_expense = 0.0
+    total_capital = 0
+    month_income = 0
+    month_expense = 0
     category_sums: dict[str, float] = {}
 
     for item in financial_transactions_storage:
@@ -167,7 +177,7 @@ def stats_handler(report_date: str) -> str:
         month_income += inc
         month_expense += exp
         for cat_name, cat_sum in cats.items():
-            category_sums[cat_name] = category_sums.get(cat_name, 0.0) + cat_sum
+            category_sums[cat_name] = category_sums.get(cat_name, 0) + cat_sum
 
     return _format_stats_output(report_date, total_capital, month_income, month_expense, category_sums)
 
