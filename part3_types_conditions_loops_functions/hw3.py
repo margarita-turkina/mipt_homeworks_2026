@@ -83,45 +83,51 @@ def cost_handler(category_name: str, amount: float, income_date: str) -> str:
 def cost_categories_handler() -> str:
     lines = []
     for main_cat, sub_cats in EXPENSE_CATEGORIES.items():
-        for sub_cat in sub_cats:
-            lines.append(f"{main_cat}::{sub_cat}")
+        lines.extend([f"{main_cat}::{sub_cat}" for sub_cat in sub_cats])
     return "\n".join(lines)
 
-def stats_handler(report_date: str) -> str:
-    extracted = extract_date(report_date)
-    if extracted is None:
-        return INCORRECT_DATE_MSG
-    target_d, target_m, target_y = extracted
-
+def _calculate_capital_and_monthly(
+    item: dict[str, Any],
+    target_d: int,
+    target_m: int,
+    target_y: int
+) -> tuple[float, float, float, dict[str, float]]:
     total_capital = 0.0
     month_income = 0.0
     month_expense = 0.0
     category_sums: dict[str, float] = {}
 
-    for item in financial_transactions_storage:
-        extracted = extract_date(item["date"])
-        if extracted is None:
-            continue
-        item_d, item_m, item_y = extracted
+    extracted = extract_date(item["date"])
+    if extracted is None:
+        return total_capital, month_income, month_expense, category_sums
+    item_d, item_m, item_y = extracted
 
-        # Считаем капитал (все до этой даты включительно)
-        if (item_y < target_y) or \
-            (item_y == target_y and item_m < target_m) or \
-            (item_y == target_y and item_m == target_m and item_d <= target_d):
-            if item["type"] == "income":
-                total_capital += item["amount"]
-            else:
-                total_capital -= item["amount"]
+    if (item_y < target_y) or \
+       (item_y == target_y and item_m < target_m) or \
+       (item_y == target_y and item_m == target_m and item_d <= target_d):
+        if item["type"] == "income":
+            total_capital += item["amount"]
+        else:
+            total_capital -= item["amount"]
 
-        # Считаем данные за текущий месяц
-        if item_m == target_m and item_y == target_y:
-            if item["type"] == "income":
-                month_income += item["amount"]
-            else:
-                month_expense += item["amount"]
-                display_name = item["category"].split("::")[-1]
-                category_sums[display_name] = category_sums.get(display_name, 0.0) + item["amount"]
+    if item_m == target_m and item_y == target_y:
+        if item["type"] == "income":
+            month_income += item["amount"]
+        else:
+            month_expense += item["amount"]
+            display_name = item["category"].split("::")[-1]
+            category_sums[display_name] = category_sums.get(display_name, 0.0) + item["amount"]
 
+    return total_capital, month_income, month_expense, category_sums
+
+
+def _format_stats_output(
+    report_date: str,
+    total_capital: float,
+    month_income: float,
+    month_expense: float,
+    category_sums: dict[str, float]
+) -> str:
     res = [f"Your statistics as of {report_date}:", f"Total capital: {total_capital:.2f} rubles"]
     diff = month_income - month_expense
     if diff >= 0:
@@ -141,8 +147,31 @@ def stats_handler(report_date: str) -> str:
             res.append(f"{i}. {cat}: {val_str}")
 
     return "\n".join(res)
+
+def stats_handler(report_date: str) -> str:
+    extracted = extract_date(report_date)
+    if extracted is None:
+        return INCORRECT_DATE_MSG
+    target_d, target_m, target_y = extracted
+
+    total_capital = 0.0
+    month_income = 0.0
+    month_expense = 0.0
+    category_sums: dict[str, float] = {}
+
+    for item in financial_transactions_storage:
+        capital, inc, exp, cats = _calculate_capital_and_monthly(
+            item, target_d, target_m, target_y
+        )
+        total_capital += capital
+        month_income += inc
+        month_expense += exp
+        for cat_name, cat_sum in cats.items():
+            category_sums[cat_name] = category_sums.get(cat_name, 0.0) + cat_sum
+
+    return _format_stats_output(report_date, total_capital, month_income, month_expense, category_sums)
+
 def process_income_command(parts: list[str]) -> None:
-    """Обработка команды income"""
     if len(parts) != INCOME_ARGS_COUNT:
         print(UNKNOWN_COMMAND_MSG)
         return
@@ -161,7 +190,6 @@ def process_income_command(parts: list[str]) -> None:
 
 
 def process_cost_command(parts: list[str]) -> None:
-    """Обработка команды cost"""
     if len(parts) == COST_CATEGORIES_ARGS and parts[1] == "categories":
         print(cost_categories_handler())
         return
@@ -177,7 +205,6 @@ def process_cost_command(parts: list[str]) -> None:
     if amount <= 0:
         print(NONPOSITIVE_VALUE_MSG)
         return
-    # Проверка категории
     valid_cats = []
     for m_cat, sub_list in EXPENSE_CATEGORIES.items():
         valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
@@ -192,7 +219,6 @@ def process_cost_command(parts: list[str]) -> None:
 
 
 def process_stats_command(parts: list[str]) -> None:
-    """Обработка команды stats"""
     if len(parts) != STATS_ARGS_COUNT:
         print(UNKNOWN_COMMAND_MSG)
         return
