@@ -53,22 +53,38 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
     return None
 
 def income_handler(amount: float, income_date: str) -> str:
-    financial_transactions_storage.append({"type": "income", "amount": amount, "date": income_date})
+    date_tuple = extract_date(income_date)
+    if date_tuple is None:
+        return INCORRECT_DATE_MSG
+    if amount <= 0:
+        return NONPOSITIVE_VALUE_MSG
+    financial_transactions_storage.append({"type": "income", "amount": amount, "date": date_tuple})
     return OP_SUCCESS_MSG
 
 def cost_handler(category_name: str, amount: float, income_date: str) -> str:
+    date_tuple = extract_date(income_date)
+    if date_tuple is None:
+        return INCORRECT_DATE_MSG
+    if amount <= 0:
+        return NONPOSITIVE_VALUE_MSG
+    valid_cats = []
+    for m_cat, sub_list in EXPENSE_CATEGORIES.items():
+        valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
+    if category_name not in valid_cats:
+        return NOT_EXISTS_CATEGORY
     financial_transactions_storage.append({
-    "type": "cost",
-    "category": category_name,
-    "amount": amount,
-    "date": income_date
+        "type": "cost",
+        "category": category_name,
+        "amount": amount,
+        "date": date_tuple
     })
     return OP_SUCCESS_MSG
 
 def cost_categories_handler() -> str:
     lines = []
     for main_cat, sub_cats in EXPENSE_CATEGORIES.items():
-        lines.append(f"{main_cat}: {', '.join(sub_cats)}")
+        for sub_cat in sub_cats:
+            lines.append(f"{main_cat}::{sub_cat}")
     return "\n".join(lines)
 
 def stats_handler(report_date: str) -> str:
