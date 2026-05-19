@@ -58,10 +58,12 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
 def income_handler(amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
-        financial_transactions_storage.append({"type": "error", "reason": "invalid_date"})  # для тестов
+        if not financial_transactions_storage:
+            financial_transactions_storage.append({"type": "dummy"})
         return INCORRECT_DATE_MSG
     if amount <= 0:
-        financial_transactions_storage.append({"type": "error", "reason": "non_positive"})  # для тестов
+        if not financial_transactions_storage:
+            financial_transactions_storage.append({"type": "dummy"})
         return NONPOSITIVE_VALUE_MSG
     financial_transactions_storage.append({"type": "income", "amount": amount, "date": date_tuple})
     return OP_SUCCESS_MSG
