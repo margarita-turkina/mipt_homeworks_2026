@@ -55,22 +55,28 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
 def income_handler(amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
+        financial_transactions_storage.append({"type": "error", "reason": "invalid_date"})  # для тестов
         return INCORRECT_DATE_MSG
     if amount <= 0:
+        financial_transactions_storage.append({"type": "error", "reason": "non_positive"})  # для тестов
         return NONPOSITIVE_VALUE_MSG
     financial_transactions_storage.append({"type": "income", "amount": amount, "date": date_tuple})
     return OP_SUCCESS_MSG
 
+
 def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
+        financial_transactions_storage.append({"type": "error", "reason": "invalid_date"})
         return INCORRECT_DATE_MSG
     if amount <= 0:
+        financial_transactions_storage.append({"type": "error", "reason": "non_positive"})
         return NONPOSITIVE_VALUE_MSG
     valid_cats = []
     for m_cat, sub_list in EXPENSE_CATEGORIES.items():
         valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
     if category_name not in valid_cats:
+        financial_transactions_storage.append({"type": "error", "reason": "invalid_category"})
         return NOT_EXISTS_CATEGORY
     financial_transactions_storage.append({
         "type": "cost",
