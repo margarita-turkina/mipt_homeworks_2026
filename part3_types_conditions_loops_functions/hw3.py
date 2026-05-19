@@ -29,8 +29,10 @@ EXPENSE_CATEGORIES = {
 
 financial_transactions_storage: list[dict[str, Any]] = []
 
+
 def is_leap_year(year: int) -> bool:
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
+
 
 def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
     parts = maybe_dt.split("-")
@@ -48,9 +50,10 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
     if is_leap_year(y):
         days_in_month[1] = 29
 
-    if 1 <= d <= days_in_month[m-1]:
+    if 1 <= d <= days_in_month[m - 1]:
         return (d, m, y)
     return None
+
 
 def income_handler(amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
@@ -78,13 +81,11 @@ def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     if category_name not in valid_cats:
         financial_transactions_storage.append({"type": "error", "reason": "invalid_category"})
         return NOT_EXISTS_CATEGORY
-    financial_transactions_storage.append({
-        "type": "cost",
-        "category": category_name,
-        "amount": amount,
-        "date": date_tuple
-    })
+    financial_transactions_storage.append(
+        {"type": "cost", "category": category_name, "amount": amount, "date": date_tuple}
+    )
     return OP_SUCCESS_MSG
+
 
 def cost_categories_handler() -> str:
     lines = []
@@ -92,11 +93,9 @@ def cost_categories_handler() -> str:
         lines.extend([f"{main_cat}::{sub_cat}" for sub_cat in sub_cats])
     return "\n".join(lines)
 
+
 def _calculate_capital_and_monthly(
-    item: dict[str, Any],
-    target_d: int,
-    target_m: int,
-    target_y: int
+    item: dict[str, Any], target_d: int, target_m: int, target_y: int
 ) -> tuple[float, float, float, dict[str, float]]:
     total_capital = 0.0
     month_income = 0.0
@@ -108,9 +107,11 @@ def _calculate_capital_and_monthly(
         return total_capital, month_income, month_expense, category_sums
     item_d, item_m, item_y = extracted
 
-    if (item_y < target_y) or \
-       (item_y == target_y and item_m < target_m) or \
-       (item_y == target_y and item_m == target_m and item_d <= target_d):
+    if (
+        (item_y < target_y)
+        or (item_y == target_y and item_m < target_m)
+        or (item_y == target_y and item_m == target_m and item_d <= target_d)
+    ):
         if item["type"] == "income":
             total_capital += item["amount"]
         else:
@@ -128,11 +129,7 @@ def _calculate_capital_and_monthly(
 
 
 def _format_stats_output(
-    report_date: str,
-    total_capital: float,
-    month_income: float,
-    month_expense: float,
-    category_sums: dict[str, float]
+    report_date: str, total_capital: float, month_income: float, month_expense: float, category_sums: dict[str, float]
 ) -> str:
     res = [f"Your statistics as of {report_date}:", f"Total capital: {total_capital:.2f} rubles"]
     diff = month_income - month_expense
@@ -154,6 +151,7 @@ def _format_stats_output(
 
     return "\n".join(res)
 
+
 def stats_handler(report_date: str) -> str:
     extracted = extract_date(report_date)
     if extracted is None:
@@ -166,9 +164,7 @@ def stats_handler(report_date: str) -> str:
     category_sums: dict[str, float] = {}
 
     for item in financial_transactions_storage:
-        capital, inc, exp, cats = _calculate_capital_and_monthly(
-            item, target_d, target_m, target_y
-        )
+        capital, inc, exp, cats = _calculate_capital_and_monthly(item, target_d, target_m, target_y)
         total_capital += capital
         month_income += inc
         month_expense += exp
@@ -176,6 +172,7 @@ def stats_handler(report_date: str) -> str:
             category_sums[cat_name] = category_sums.get(cat_name, 0.0) + cat_sum
 
     return _format_stats_output(report_date, total_capital, month_income, month_expense, category_sums)
+
 
 def process_income_command(parts: list[str]) -> None:
     if len(parts) != INCOME_ARGS_COUNT:
@@ -233,6 +230,7 @@ def process_stats_command(parts: list[str]) -> None:
         return
     print(stats_handler(parts[1]))
 
+
 def main() -> None:
     while True:
         try:
@@ -253,6 +251,7 @@ def main() -> None:
             process_stats_command(parts)
         else:
             print(UNKNOWN_COMMAND_MSG)
+
 
 if __name__ == "__main__":
     main()
