@@ -58,8 +58,6 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
 def income_handler(amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
-        if not financial_transactions_storage:
-            financial_transactions_storage.append({"type": "dummy"})
         return INCORRECT_DATE_MSG
     if amount <= 0:
         if not financial_transactions_storage:
@@ -72,10 +70,8 @@ def income_handler(amount: float, income_date: str) -> str:
 def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
-        financial_transactions_storage.append({"type": "error", "reason": "invalid_date"})
         return INCORRECT_DATE_MSG
     if amount <= 0:
-        financial_transactions_storage.append({"type": "error", "reason": "non_positive"})
         return NONPOSITIVE_VALUE_MSG
     valid_cats = []
     for m_cat, sub_list in EXPENSE_CATEGORIES.items():
