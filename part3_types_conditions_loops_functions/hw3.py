@@ -72,15 +72,21 @@ def cost_categories_handler() -> str:
     return "\n".join(lines)
 
 def stats_handler(report_date: str) -> str:
-    target_d, target_m, target_y = extract_date(report_date)
+    extracted = extract_date(report_date)
+    if extracted is None:
+        return INCORRECT_DATE_MSG
+    target_d, target_m, target_y = extracted
 
     total_capital = 0.0
     month_income = 0.0
     month_expense = 0.0
-    category_sums = {}
+    category_sums: dict[str, float] = {}
 
     for item in financial_transactions_storage:
-        item_d, item_m, item_y = extract_date(item["date"])
+        extracted = extract_date(item["date"])
+        if extracted is None:
+            continue
+        item_d, item_m, item_y = extracted
 
         # Считаем капитал (все до этой даты включительно)
         if (item_y < target_y) or \
@@ -97,7 +103,6 @@ def stats_handler(report_date: str) -> str:
                 month_income += item["amount"]
             else:
                 month_expense += item["amount"]
-                # Сохраняем только target_category для отчета
                 display_name = item["category"].split("::")[-1]
                 category_sums[display_name] = category_sums.get(display_name, 0.0) + item["amount"]
 
