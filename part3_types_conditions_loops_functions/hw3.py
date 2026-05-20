@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from typing import Any
-
 UNKNOWN_COMMAND_MSG = "Unknown command!"
 NONPOSITIVE_VALUE_MSG = "Value must be grater than zero!"
 INCORRECT_DATE_MSG = "Invalid date!"
@@ -27,7 +25,7 @@ EXPENSE_CATEGORIES = {
     "Other": ("SomeCategory", "SomeOtherCategory"),
 }
 
-financial_transactions_storage: list[dict[str, Any]] = []
+financial_transactions_storage: list[dict[str, float | str | tuple[int, int, int]]] = []
 
 
 def _is_leap_year(year: int) -> bool:
@@ -38,6 +36,36 @@ def _get_days_in_month(year: int) -> list[int]:
     """Return days in each month for given year."""
     feb_days = 29 if _is_leap_year(year) else 28
     return [31, feb_days, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+
+def _is_valid_amount(raw_amount: str) -> bool:
+    normalized = raw_amount.replace(",", ".")
+    return normalized.replace(".", "", 1).isdigit()
+
+
+def _get_valid_categories() -> list[str]:
+    valid_cats = []
+    for m_cat, sub_list in EXPENSE_CATEGORIES.items():
+        valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
+    return valid_cats
+
+
+def _store_failed() -> None:
+    failed: dict[str, float | str | tuple[int, int, int]] = {}
+    financial_transactions_storage.append(failed)
+
+
+def _parse_transaction_date(
+    item: dict[str, float | str | tuple[int, int, int]],
+) -> tuple[int, int, int] | None:
+    if not item:
+        return None
+    date_val = item["date"]
+    if isinstance(date_val, tuple):
+        return date_val
+    if isinstance(date_val, str):
+        return extract_date(date_val)
+    return None
 
 
 def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
@@ -60,10 +88,10 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
 def income_handler(amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
-        financial_transactions_storage.append({})
+        _store_failed()
         return INCORRECT_DATE_MSG
     if amount <= 0:
-        financial_transactions_storage.append({})
+        _store_failed()
         return NONPOSITIVE_VALUE_MSG
     financial_transactions_storage.append(
         {"type": "income", "amount": amount, "date": date_tuple}
@@ -74,16 +102,13 @@ def income_handler(amount: float, income_date: str) -> str:
 def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
-        financial_transactions_storage.append({})
+        _store_failed()
         return INCORRECT_DATE_MSG
     if amount <= 0:
-        financial_transactions_storage.append({})
+        _store_failed()
         return NONPOSITIVE_VALUE_MSG
-    valid_cats = []
-    for m_cat, sub_list in EXPENSE_CATEGORIES.items():
-        valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
-    if category_name not in valid_cats:
-        financial_transactions_storage.append({})
+    if category_name not in _get_valid_categories():
+        _store_failed()
         return NOT_EXISTS_CATEGORY
     financial_transactions_storage.append(
         {"type": "cost", "category": category_name, "amount": amount, "date": date_tuple}
@@ -99,26 +124,22 @@ def cost_categories_handler() -> str:
 
 
 def _calculate_capital_and_monthly(
-    item: dict[str, Any], target_d: int, target_m: int, target_y: int
+    item: dict[str, float | str | tuple[int, int, int]], target_d: int, target_m: int, target_y: int
 ) -> tuple[float, float, float, dict[str, float]]:
-    total_capital = 0
-    month_income = 0
-    month_expense = 0
+    total_capital = 0.0
+    month_income = 0.0
+    month_expense = 0.0
     category_sums: dict[str, float] = {}
 
-    if not item:
+    parsed_date = _parse_transaction_date(item)
+    if parsed_date is None:
+        return total_capital, month_income, month_expense, category_sums
+    item_d, item_m, item_y = parsed_date
+
+    amount = item.get("amount")
+    if not isinstance(amount, (int, float)):
         return total_capital, month_income, month_expense, category_sums
 
-    date_val = item["date"]
-    if isinstance(date_val, tuple):
-        item_d, item_m, item_y = date_val
-    else:
-        extracted = extract_date(date_val)
-        if extracted is None:
-            return total_capital, month_income, month_expense, category_sums
-        item_d, item_m, item_y = extracted
-
-    # Check if item date is before or on report date
     is_before_report = (
         item_y < target_y or
         (item_y == target_y and item_m < target_m) or
@@ -126,18 +147,19 @@ def _calculate_capital_and_monthly(
     )
     if is_before_report:
         if item["type"] == "income":
-            total_capital += item["amount"]
+            total_capital += amount
         else:
-            total_capital -= item["amount"]
+            total_capital -= amount
 
-    # Check if item is in target month
     if item_m == target_m and item_y == target_y:
         if item["type"] == "income":
-            month_income += item["amount"]
+            month_income += amount
         else:
-            month_expense += item["amount"]
-            display_name = item["category"].split("::")[-1]
-            category_sums[display_name] = category_sums.get(display_name, 0) + item["amount"]
+            month_expense += amount
+            category = item.get("category", "")
+            if isinstance(category, str):
+                display_name = category.split("::")[-1]
+                category_sums[display_name] = category_sums.get(display_name, 0) + amount
 
     return total_capital, month_income, month_expense, category_sums
 
@@ -198,11 +220,10 @@ def process_income_command(parts: list[str]) -> None:
     if len(parts) != INCOME_ARGS_COUNT:
         print(UNKNOWN_COMMAND_MSG)
         return
-    raw_amount = parts[1].replace(",", ".")
-    if not raw_amount.replace(".", "", 1).isdigit():
+    if not _is_valid_amount(parts[1]):
         print(UNKNOWN_COMMAND_MSG)
         return
-    amount = float(raw_amount)
+    amount = float(parts[1].replace(",", "."))
     if amount <= 0:
         print(NONPOSITIVE_VALUE_MSG)
         return
@@ -220,18 +241,14 @@ def process_cost_command(parts: list[str]) -> None:
         print(UNKNOWN_COMMAND_MSG)
         return
     cat = parts[1]
-    raw_amount = parts[2].replace(",", ".")
-    if not raw_amount.replace(".", "", 1).isdigit():
+    if not _is_valid_amount(parts[2]):
         print(UNKNOWN_COMMAND_MSG)
         return
-    amount = float(raw_amount)
+    amount = float(parts[2].replace(",", "."))
     if amount <= 0:
         print(NONPOSITIVE_VALUE_MSG)
         return
-    valid_cats = []
-    for m_cat, sub_list in EXPENSE_CATEGORIES.items():
-        valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
-    if cat not in valid_cats:
+    if cat not in _get_valid_categories():
         print(NOT_EXISTS_CATEGORY)
         print(cost_categories_handler())
         return
@@ -253,10 +270,7 @@ def process_stats_command(parts: list[str]) -> None:
 
 def main() -> None:
     while True:
-        try:
-            line = input().strip()
-        except EOFError:
-            break
+        line = input().strip()
         if not line:
             continue
 
