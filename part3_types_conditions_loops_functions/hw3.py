@@ -93,9 +93,7 @@ def income_handler(amount: float, income_date: str) -> str:
     if amount <= 0:
         _store_failed()
         return NONPOSITIVE_VALUE_MSG
-    financial_transactions_storage.append(
-        {"type": "income", "amount": amount, "date": date_tuple}
-    )
+    financial_transactions_storage.append({"type": "income", "amount": amount, "date": date_tuple})
     return OP_SUCCESS_MSG
 
 
@@ -141,9 +139,9 @@ def _calculate_capital_and_monthly(
         return total_capital, month_income, month_expense, category_sums
 
     is_before_report = (
-        item_y < target_y or
-        (item_y == target_y and item_m < target_m) or
-        (item_y == target_y and item_m == target_m and item_d <= target_d)
+        item_y < target_y
+        or (item_y == target_y and item_m < target_m)
+        or (item_y == target_y and item_m == target_m and item_d <= target_d)
     )
     if is_before_report:
         if item["type"] == "income":
