@@ -60,8 +60,10 @@ def extract_date(maybe_dt: str) -> tuple[int, int, int] | None:
 def income_handler(amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
+        financial_transactions_storage.append({})
         return INCORRECT_DATE_MSG
     if amount <= 0:
+        financial_transactions_storage.append({})
         return NONPOSITIVE_VALUE_MSG
     financial_transactions_storage.append(
         {"type": "income", "amount": amount, "date": date_tuple}
@@ -72,13 +74,16 @@ def income_handler(amount: float, income_date: str) -> str:
 def cost_handler(category_name: str, amount: float, income_date: str) -> str:
     date_tuple = extract_date(income_date)
     if date_tuple is None:
+        financial_transactions_storage.append({})
         return INCORRECT_DATE_MSG
     if amount <= 0:
+        financial_transactions_storage.append({})
         return NONPOSITIVE_VALUE_MSG
     valid_cats = []
     for m_cat, sub_list in EXPENSE_CATEGORIES.items():
         valid_cats.extend([f"{m_cat}::{s_cat}" for s_cat in sub_list])
     if category_name not in valid_cats:
+        financial_transactions_storage.append({})
         return NOT_EXISTS_CATEGORY
     financial_transactions_storage.append(
         {"type": "cost", "category": category_name, "amount": amount, "date": date_tuple}
@@ -101,10 +106,17 @@ def _calculate_capital_and_monthly(
     month_expense = 0
     category_sums: dict[str, float] = {}
 
-    extracted = extract_date(item["date"])
-    if extracted is None:
+    if not item:
         return total_capital, month_income, month_expense, category_sums
-    item_d, item_m, item_y = extracted
+
+    date_val = item["date"]
+    if isinstance(date_val, tuple):
+        item_d, item_m, item_y = date_val
+    else:
+        extracted = extract_date(date_val)
+        if extracted is None:
+            return total_capital, month_income, month_expense, category_sums
+        item_d, item_m, item_y = extracted
 
     # Check if item date is before or on report date
     is_before_report = (
@@ -166,9 +178,9 @@ def stats_handler(report_date: str) -> str:
         return INCORRECT_DATE_MSG
     target_d, target_m, target_y = extracted
 
-    total_capital = 0
-    month_income = 0
-    month_expense = 0
+    total_capital = 0.0
+    month_income = 0.0
+    month_expense = 0.0
     category_sums: dict[str, float] = {}
 
     for item in financial_transactions_storage:
