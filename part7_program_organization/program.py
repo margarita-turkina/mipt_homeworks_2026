@@ -19,8 +19,7 @@
 def read_data(filename: str) -> list[str]:
     records = []
     with open(filename) as f:
-        for line in f:
-            ...
+        for _line in f:
             records.append(r)
     return records
 
@@ -30,8 +29,7 @@ def read_data(filename: str) -> list[str]:
 # Provide lines
 def read_data(lines):
     records = []
-    for line in lines:
-        ...
+    for _line in lines:
         records.append(r)
     return records
 

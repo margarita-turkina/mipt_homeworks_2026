@@ -163,15 +163,12 @@ class CachedProperty[V]:
 
     def __get__(self, instance: HasCache[Any, Any] | None, owner: type) -> V:
         if instance is None:
-            return cast(Any, self)
-        if self._name is None:
-            cache_key = self.func.__name__
-        else:
-            cache_key = self._name
+            return cast("V", self)
+        cache_key = self.func.__name__ if self._name is None else self._name
         if instance.cache.exists(cache_key):
             cached = instance.cache.get(cache_key)
             if cached is not None:
-                return cached
+                return cast("V", cached)
         value: V = self.func(instance)
         instance.cache.set(cache_key, value)
         return value
