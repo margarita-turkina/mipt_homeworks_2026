@@ -1,92 +1,133 @@
-name: CI
+import json
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from functools import wraps
+from typing import Any, NoReturn, ParamSpec, TypeVar
+from urllib.request import urlopen
 
-on:
-  workflow_dispatch:
-    inputs:
-      package_path:
-        description: 'Path to package directory'
-        required: true
-        default: 'part5_decorators'
-      run_ty:
-        description: 'Run ty type checker'
-        required: false
-        default: false
-        type: boolean
-      run_pyrefly:
-        description: 'Run pyrefly type checker'
-        required: false
-        default: false
-        type: boolean
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+INVALID_CRITICAL_COUNT = "Breaker count must be positive integer!"
+INVALID_RECOVERY_TIME = "Breaker recovery time must be positive integer!"
+VALIDATIONS_FAILED = "Invalid decorator args."
+TOO_MUCH = "Too much requests, just wait."
 
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+P = ParamSpec("P")
+R = TypeVar("R")
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
+def _is_positive_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
-      - name: Install dependencies
-        run: uv sync --group lint --group test
 
-      - name: Run ruff check
-        run: uv run ruff check "part5_decorators"
+def _collect_validation_errors(critical_count: int, time_to_recover: int) -> list[ValueError]:
+    errors: list[ValueError] = []
+    if not _is_positive_int(critical_count):
+        errors.append(ValueError(INVALID_CRITICAL_COUNT))
+    if not _is_positive_int(time_to_recover):
+        errors.append(ValueError(INVALID_RECOVERY_TIME))
+    return errors
 
-      - name: Run ruff format
-        run: uv run ruff format --check "part5_decorators"
 
-      - name: Run wemake-python-styleguide
-        run: uv run flake8 "part5_decorators"
+def _resolve_triggers_on(triggers_on: type[Exception] | None) -> type[Exception]:
+    if triggers_on is None:
+        return Exception
+    return triggers_on
 
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+class BreakerError(Exception):
+    def __init__(
+        self,
+        message: str = TOO_MUCH,
+        *,
+        func_name: str | None = None,
+        block_time: datetime | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.func_name = func_name
+        self.block_time = block_time
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
 
-      - name: Install dependencies
-        run: uv sync --group lint --group test
+@dataclass
+class _BreakerState:
+    failure_count: int = 0
+    block_time: datetime | None = None
 
-      - name: Run mypy
-        run: uv run mypy "part5_decorators"
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+def _raise_if_blocked(state: _BreakerState, time_to_recover: int, func_name: str) -> None:
+    if state.block_time is None:
+        return
+    recovery_delta = timedelta(seconds=time_to_recover)
+    if datetime.now(UTC) - state.block_time < recovery_delta:
+        raise BreakerError(TOO_MUCH, func_name=func_name, block_time=state.block_time)
+    state.block_time = None
+    state.failure_count = 0
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
+def _process_failure(
+    exc: Exception,
+    state: _BreakerState,
+    triggers_on: type[Exception],
+    critical_count: int,
+    func_name: str,
+) -> NoReturn:
+    if not isinstance(exc, triggers_on):
+        raise exc
+    state.failure_count += 1
+    if state.failure_count < critical_count:
+        raise exc
+    state.block_time = datetime.now(UTC)
+    raise BreakerError(TOO_MUCH, func_name=func_name, block_time=state.block_time) from exc
 
-      - name: Install dependencies
-        run: uv sync --group lint --group test
 
-      - name: Run pytest
-        run: |
-          if [ -d "part5_decorators/tests" ]; then
-            uv run pytest "part5_decorators/tests" -v
-          else
-            echo "No tests directory found in part5_decorators"
-          fi
+class CircuitBreaker:
+    def __init__(
+        self,
+        critical_count: int = 5,
+        time_to_recover: int = 30,
+        triggers_on: type[Exception] | None = None,
+    ) -> None:
+        validation_errors = _collect_validation_errors(critical_count, time_to_recover)
+        if validation_errors:
+            raise ExceptionGroup(VALIDATIONS_FAILED, validation_errors)
+
+        self.critical_count = critical_count
+        self.time_to_recover = time_to_recover
+        self.triggers_on = _resolve_triggers_on(triggers_on)
+
+    def __call__(self, func: Callable[P, R]) -> Callable[P, R]:
+        func_name = f"{func.__module__}.{func.__name__}"
+        state = _BreakerState()
+
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            _raise_if_blocked(state, self.time_to_recover, func_name)
+            try:
+                result = func(*args, **kwargs)
+            except Exception as exc:  # noqa: BLE001
+                _process_failure(exc, state, self.triggers_on, self.critical_count, func_name)
+            else:
+                state.failure_count = 0
+                return result
+
+        return wrapper
+
+
+circuit_breaker = CircuitBreaker(5, 30, Exception)
+
+
+def get_comments(post_id: int) -> Any:
+    """
+    Получает комментарии к посту
+
+    Args:
+        post_id (int): Идентификатор поста
+
+    Returns:
+        list[dict[int | str]]: Список комментариев
+    """
+    response = urlopen(f"https://jsonplaceholder.typicode.com/comments?postId={post_id}")
+    return json.loads(response.read())
+
+
+if __name__ == "__main__":
+    comments = get_comments(1)
