@@ -1,9 +1,9 @@
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar
-
+from typing import Any, NoReturn, ParamSpec, TypeVar
 from urllib.request import urlopen
 
 INVALID_CRITICAL_COUNT = "Breaker count must be positive integer!"
@@ -19,6 +19,21 @@ def _is_positive_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _collect_validation_errors(critical_count: int, time_to_recover: int) -> list[ValueError]:
+    errors: list[ValueError] = []
+    if not _is_positive_int(critical_count):
+        errors.append(ValueError(INVALID_CRITICAL_COUNT))
+    if not _is_positive_int(time_to_recover):
+        errors.append(ValueError(INVALID_RECOVERY_TIME))
+    return errors
+
+
+def _resolve_triggers_on(triggers_on: type[Exception] | None) -> type[Exception]:
+    if triggers_on is None:
+        return Exception
+    return triggers_on
+
+
 class BreakerError(Exception):
     def __init__(
         self,
@@ -32,6 +47,38 @@ class BreakerError(Exception):
         self.block_time = block_time
 
 
+@dataclass
+class _BreakerState:
+    failure_count: int = 0
+    block_time: datetime | None = None
+
+
+def _raise_if_blocked(state: _BreakerState, time_to_recover: int, func_name: str) -> None:
+    if state.block_time is None:
+        return
+    recovery_delta = timedelta(seconds=time_to_recover)
+    if datetime.now(UTC) - state.block_time < recovery_delta:
+        raise BreakerError(TOO_MUCH, func_name=func_name, block_time=state.block_time)
+    state.block_time = None
+    state.failure_count = 0
+
+
+def _process_failure(
+    exc: Exception,
+    state: _BreakerState,
+    triggers_on: type[Exception],
+    critical_count: int,
+    func_name: str,
+) -> NoReturn:
+    if not isinstance(exc, triggers_on):
+        raise exc
+    state.failure_count += 1
+    if state.failure_count < critical_count:
+        raise exc
+    state.block_time = datetime.now(UTC)
+    raise BreakerError(TOO_MUCH, func_name=func_name, block_time=state.block_time) from exc
+
+
 class CircuitBreaker:
     def __init__(
         self,
@@ -39,52 +86,27 @@ class CircuitBreaker:
         time_to_recover: int = 30,
         triggers_on: type[Exception] | None = None,
     ) -> None:
-        validation_errors: list[ValueError] = []
-        if not _is_positive_int(critical_count):
-            validation_errors.append(ValueError(INVALID_CRITICAL_COUNT))
-        if not _is_positive_int(time_to_recover):
-            validation_errors.append(ValueError(INVALID_RECOVERY_TIME))
+        validation_errors = _collect_validation_errors(critical_count, time_to_recover)
         if validation_errors:
             raise ExceptionGroup(VALIDATIONS_FAILED, validation_errors)
 
         self.critical_count = critical_count
         self.time_to_recover = time_to_recover
-        self.triggers_on = triggers_on if triggers_on is not None else Exception
+        self.triggers_on = _resolve_triggers_on(triggers_on)
 
     def __call__(self, func: Callable[P, R]) -> Callable[P, R]:
         func_name = f"{func.__module__}.{func.__name__}"
-        failure_count = 0
-        block_time: datetime | None = None
+        state = _BreakerState()
 
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            nonlocal failure_count, block_time
-
-            if block_time is not None:
-                if datetime.now(UTC) - block_time < timedelta(seconds=self.time_to_recover):
-                    raise BreakerError(
-                        TOO_MUCH,
-                        func_name=func_name,
-                        block_time=block_time,
-                    )
-                block_time = None
-                failure_count = 0
-
+            _raise_if_blocked(state, self.time_to_recover, func_name)
             try:
                 result = func(*args, **kwargs)
-            except Exception as exc:
-                if isinstance(exc, self.triggers_on):
-                    failure_count += 1
-                    if failure_count >= self.critical_count:
-                        block_time = datetime.now(UTC)
-                        raise BreakerError(
-                            TOO_MUCH,
-                            func_name=func_name,
-                            block_time=block_time,
-                        ) from exc
-                raise
+            except Exception as exc:  # noqa: BLE001
+                _process_failure(exc, state, self.triggers_on, self.critical_count, func_name)
             else:
-                failure_count = 0
+                state.failure_count = 0
                 return result
 
         return wrapper
