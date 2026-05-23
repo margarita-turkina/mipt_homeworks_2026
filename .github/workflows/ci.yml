@@ -6,7 +6,6 @@ on:
       package_path:
         description: 'Path to package directory'
         required: true
-        default: 'part5_decorators'
       run_ty:
         description: 'Run ty type checker'
         required: false
@@ -23,8 +22,32 @@ on:
     branches: [main, master]
 
 jobs:
-  lint:
+  detect-changes:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    outputs:
+      folders: ${{ steps.detect.outputs.folders }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed folders
+        id: detect
+        run: |
+          FOLDERS='["part5_decorators"]'
+          echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
+  lint:
+    needs: detect-changes
+    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.has_changes == 'true')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        folder: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.package_path)) || fromJson(needs.detect-changes.outputs.folders) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,16 +63,22 @@ jobs:
         run: uv sync --group lint --group test
 
       - name: Run ruff check
-        run: uv run ruff check "part5_decorators"
+        run: uv run ruff check "${{ matrix.folder }}"
 
       - name: Run ruff format
-        run: uv run ruff format --check "part5_decorators"
+        run: uv run ruff format --check "${{ matrix.folder }}"
 
       - name: Run wemake-python-styleguide
-        run: uv run flake8 "part5_decorators"
+        run: uv run flake8 "${{ matrix.folder }}"
 
   typecheck:
+    needs: detect-changes
+    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.has_changes == 'true')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        folder: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', package_path)) || fromJson(needs.detect-changes.outputs.folders) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,10 +94,24 @@ jobs:
         run: uv sync --group lint --group test
 
       - name: Run mypy
-        run: uv run mypy "part5_decorators"
+        run: uv run mypy "${{ matrix.folder }}"
+
+      - name: Run ty (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_ty == 'true' }}
+        run: uv run ty check "${{ matrix.folder }}"
+
+      - name: Run pyrefly (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_pyrefly == 'true' }}
+        run: uv run pyrefly check "${{ matrix.folder }}" --project-excludes "**/*.ipynb"
 
   test:
+    needs: detect-changes
+    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.has_changes == 'true')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        folder: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.package_path)) || fromJson(needs.detect-changes.outputs.folders) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -85,8 +128,8 @@ jobs:
 
       - name: Run pytest
         run: |
-          if [ -d "part5_decorators/tests" ]; then
-            uv run pytest "part5_decorators/tests" -v
+          if [ -d "${{ matrix.folder }}/tests" ]; then
+            uv run pytest "${{ matrix.folder }}/tests" -v
           else
-            echo "No tests directory found in part5_decorators"
+            echo "No tests directory found in ${{ matrix.folder }}"
           fi
