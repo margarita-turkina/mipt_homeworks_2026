@@ -36,6 +36,7 @@ jobs:
       - name: Detect changed folders
         id: detect
         run: |
+          # Принудительно передаем только нужную папку в матрицу
           FOLDERS='["part5_decorators"]'
           echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
           echo "has_changes=true" >> $GITHUB_OUTPUT
@@ -78,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        folder: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', package_path)) || fromJson(needs.detect-changes.outputs.folders) }}
+        folder: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.package_path)) || fromJson(needs.detect-changes.outputs.folders) }}
     steps:
       - uses: actions/checkout@v4
 
