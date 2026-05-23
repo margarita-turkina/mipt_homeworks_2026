@@ -16,7 +16,6 @@ typedef struct {
 } PyModuleObject;
 """
 
-from types import ModuleType
 
 
 """
@@ -49,8 +48,6 @@ _NamespacePath(["/morelibs/company_name", "/mylibs/company_name"])
 """
 
 
-from sys import path
-from os import chdir
 
 
 # from module import func, MyClass, submodule
@@ -67,7 +64,6 @@ from os import chdir
 # from module.submodule.subsubmodule import Class
 
 
-from . import program
 # from .. import part4_oop
 # from .program import d
 # from ..part4_oop import hw45
