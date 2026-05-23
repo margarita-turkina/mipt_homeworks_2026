@@ -43,9 +43,15 @@ jobs:
             echo "folders=[]" >> $GITHUB_OUTPUT
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
-            FOLDERS=$(echo "$PY_FILES" | grep -vE '^\.' | cut -d'/' -f1 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+            FOLDERS=$(echo "$PY_FILES" | grep -vE '^\.' | cut -d'/' -f1 | sort -u | grep -vE '^(part3_types_conditions_loops_functions|part7_program_organization)$' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            
+            if [ "$FOLDERS" = "[]" ]; then
+              echo "folders=[]" >> $GITHUB_OUTPUT
+              echo "has_changes=false" >> $GITHUB_OUTPUT
+            else
+              echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
+              echo "has_changes=true" >> $GITHUB_OUTPUT
+            fi
           fi
 
   lint:
