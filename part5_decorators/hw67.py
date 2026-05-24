@@ -8,6 +8,7 @@ from urllib.request import urlopen
 
 INVALID_CRITICAL_COUNT = "Breaker count must be positive integer!"
 INVALID_RECOVERY_TIME = "Breaker recovery time must be positive integer!"
+INVALID_TRIGGERS_ON = "Breaker triggers_on must be an Exception subclass!"
 VALIDATIONS_FAILED = "Invalid decorator args."
 TOO_MUCH = "Too much requests, just wait."
 
@@ -19,12 +20,26 @@ def _is_positive_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
-def _collect_validation_errors(critical_count: int, time_to_recover: int) -> list[ValueError]:
+def _is_valid_exception_cls(value: object) -> bool:
+    return isinstance(value, type) and issubclass(value, Exception)
+
+
+def _collect_validation_errors(
+    critical_count: int,
+    time_to_recover: int,
+    triggers_on: object,
+) -> list[ValueError]:
     errors: list[ValueError] = []
+
     if not _is_positive_int(critical_count):
         errors.append(ValueError(INVALID_CRITICAL_COUNT))
+
     if not _is_positive_int(time_to_recover):
         errors.append(ValueError(INVALID_RECOVERY_TIME))
+
+    if not _is_valid_exception_cls(triggers_on):
+        errors.append(ValueError(INVALID_TRIGGERS_ON))
+
     return errors
 
 
@@ -86,7 +101,12 @@ class CircuitBreaker:
         time_to_recover: int = 30,
         triggers_on: type[Exception] | None = None,
     ) -> None:
-        validation_errors = _collect_validation_errors(critical_count, time_to_recover)
+        triggers_for_validation = Exception if triggers_on is None else triggers_on
+        validation_errors = _collect_validation_errors(
+            critical_count,
+            time_to_recover,
+            triggers_for_validation,
+        )
         if validation_errors:
             raise ExceptionGroup(VALIDATIONS_FAILED, validation_errors)
 
