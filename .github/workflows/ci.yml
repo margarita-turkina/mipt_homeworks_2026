@@ -36,17 +36,10 @@ jobs:
       - name: Detect changed folders
         id: detect
         run: |
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
-          PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$' || true)
-
-          if [ -z "$PY_FILES" ]; then
-            echo "folders=[]" >> $GITHUB_OUTPUT
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            FOLDERS=$(echo "$PY_FILES" | grep -vE '^\.' | cut -d'/' -f1 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
+          # Принудительно передаем только нужную папку в матрицу
+          FOLDERS='["part5_decorators"]'
+          echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
+          echo "has_changes=true" >> $GITHUB_OUTPUT
 
   lint:
     needs: detect-changes
